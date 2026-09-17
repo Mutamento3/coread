@@ -43,7 +43,7 @@ initDb(DB_PATH);
 
 const MIME = {
   '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
-  '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+  '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
 };
 
@@ -67,7 +67,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, process.env.COREAD_HOST || '0.0.0.0', () => {
   console.log(`\n  📚 coread server running at http://localhost:${PORT}`);
   console.log(`  📂 Database: ${DB_PATH}`);
   console.log(`  🌐 Open http://localhost:${PORT} in your browser\n`);

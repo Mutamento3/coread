@@ -1,6 +1,9 @@
 
 import React, { useState, useEffect, useCallback, useRef, startTransition, useLayoutEffect, useMemo } from 'react';
 import { api } from './api';
+import { useReadingClock, flushReading } from './useReadingClock';
+import ReadingJournal, { duration } from './ReadingJournal';
+import BackupControls from './BackupControls';
 
 function themeColors(h: number, s: number, l: number) {
     const primary = `hsl(${h}, ${s}%, ${l}%)`;
@@ -22,9 +25,36 @@ function themeColors(h: number, s: number, l: number) {
     return { primary, primaryLight, primaryBg, primaryBorder, primaryDark, warmAccent, warmBg, grad1, grad2, grad3, shenColor, shenBg, tongColor, tongBg, shenHL, tongHL };
 }
 
-interface Book { id: number; title: string; total_paragraphs: number; created_at: string; current_page: number | null; comment_count: number; }
+interface Book {
+    id: number;
+    title: string;
+    total_paragraphs: number;
+    created_at: string;
+    current_page: number | null;
+    current_display_page?: number | null;
+    current_paragraph_idx?: number | null;
+    current_paragraph_offset?: number | null;
+    total_pages?: number;
+    pagination_source?: 'browser' | 'fallback';
+    comment_count: number;
+    cover_image?: string | null;
+    last_read_at?: string | null;
+    last_opened_at?: string | null;
+    finished_at?: string | null;
+}
 interface Paragraph { idx: number; content: string; }
 interface Comment { id: number; book_id: number; paragraph_idx: number; sel_end_para_idx: number | null; sel_start_idx: number | null; sel_end_idx: number | null; selected_text: string | null; from_who: string; content: string; created_at: string; reply_to: number | null; }
+interface ReadingStats {
+    today: string;
+    today_seconds: number;
+    total_seconds: number;
+    currentStreak: number;
+    longestStreak: number;
+    readingDays: number;
+    daily: { reading_date: string; seconds: number }[];
+    books: { id: number; title: string; total_seconds: number; finished_at: string | null; last_read_at: string | null }[];
+    notes: { id: number; book_id: number | null; book_title: string | null; reading_date: string | null; from_who: string; content: string; created_at: string }[];
+}
 interface PageBreak { paraIndex: number; offset: number; }
 interface PageFragment extends Paragraph { sourceIdx: number; startOffset: number; endOffset: number; isPartialStart: boolean; isPartialEnd: boolean; }
 interface ReplyNotice {
@@ -86,6 +116,22 @@ const PARA_GAP = 18;
 const CHAPTER_GAP_TOP = 40;
 const CHAPTER_GAP_BOTTOM = 28;
 
+function localDateString(date = new Date()): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function formatReadingTime(seconds: number): string {
+    const minutes = Math.floor(Number(seconds || 0) / 60);
+    if (minutes < 1) return '不足 1 分钟';
+    if (minutes < 60) return `${minutes} 分钟`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`;
+}
+
 // 大书（对齐SullyOS共读室 v2.2.24）：不做窗口化——全局连续视觉分页。
 // 超阈值的书首开走渐进分页：分块测量（块间让出主线程不卡UI）+ 完成后写分页缓存，之后秒开。
 const PROGRESSIVE_MEASURE_THRESHOLD = 15000;
@@ -100,7 +146,7 @@ const PROVISIONAL_WIN = 2500;
 // 或被清理→每次重开都重分页。localStorage 只作 IDB 不可用时的后手兜底。
 const idbOpen = (): Promise<IDBDatabase | null> => new Promise((resolve) => {
     try {
-        const req = indexedDB.open('study-reader-cache', 2);
+        const req = indexedDB.open(`study-reader-cache-${localStorage.getItem('coread-cache-generation') || 'original'}`, 2);
         req.onupgradeneeded = () => {
             const db = req.result;
             if (!db.objectStoreNames.contains('pagebreaks')) db.createObjectStore('pagebreaks');
@@ -204,7 +250,9 @@ const StudyApp: React.FC = () => {
     const [pageHeight, setPageHeight] = useState(0);
     const [readerSize, setReaderSize] = useState({ width: 0, height: 0 });
     const savedParaIdxRef = useRef<number | null>(null);
+    const savedParaOffsetRef = useRef(0);
     const currentParaIdxRef = useRef<number | null>(null);
+    const currentParaOffsetRef = useRef(0);
     // 后手优化：临时页表覆盖的段落区间（非null=全书分页仍在后台补全，窗外跳转先拦住）
     const provisionalRangeRef = useRef<{ from: number; to: number } | null>(null);
 
@@ -246,6 +294,9 @@ const StudyApp: React.FC = () => {
     const [humanName, setHumanName] = useState(() => localStorage.getItem('coread-human-name') || 'human');
     const [aiName, setAiName] = useState(() => localStorage.getItem('coread-ai-name') || 'AI');
     const [showSettings, setShowSettings] = useState(false);
+    const [showReadingStats, setShowReadingStats] = useState(false);
+    const [readingStats, setReadingStats] = useState<ReadingStats | null>(null);
+    const [readingStatsLoading, setReadingStatsLoading] = useState(false);
     const [readerFontSize, setReaderFontSize] = useState(() => parseInt(localStorage.getItem('coread-font-size') || '14', 10));
     const [showFontPanel, setShowFontPanel] = useState(false);
     const [readerBrightness, setReaderBrightness] = useState(() => parseInt(localStorage.getItem('coread-brightness') || '100', 10));
@@ -258,6 +309,8 @@ const StudyApp: React.FC = () => {
     };
     const barTimer = useRef<any>(null);
     const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
+    const suppressTapRef = useRef(false);
+    const suppressTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const toggleBar = () => {
         if (activeComments.length > 0) { setActiveComments([]); return; }
@@ -276,14 +329,16 @@ const StudyApp: React.FC = () => {
     useEffect(() => { commentsRef.current = comments; }, [comments]);
     useEffect(() => { allCommentsRef.current = allComments; }, [allComments]);
 
+    const readingClock = useReadingClock(activeBook?.id || null,
+        mode === 'reading' && !readingLoading && allParas.length > 0 && !showSettings && !showReadingStats);
+
+
     const lastCommentIds = useRef('');
     useEffect(() => {
         if (mode !== 'reading' || !activeBook) return;
         const interval = setInterval(async () => {
             try {
-                const vh = window.innerHeight || 700;
-                const pp = Math.max(12, Math.min(28, Math.floor((vh - 120) / 26)));
-                const d = await api.fetchBookDetail(activeBook.id, page, pp);
+                const d = await api.fetchBookDetail(activeBook.id, page);
                 if (d.comments) {
                     const newIds = d.comments.map((c: any) => c.id).join(',');
                     if (newIds !== lastCommentIds.current) {
@@ -476,13 +531,27 @@ const StudyApp: React.FC = () => {
         setLoading(false);
     };
 
+    const openReadingStats = async () => {
+        window.dispatchEvent(new Event('coread-pause'));
+        setShowReadingStats(true);
+        setReadingStatsLoading(true);
+        try { await flushReading(); setReadingStats(await api.fetchReadingStats(localDateString())); }
+        catch (e: any) { toast(`阅读记录加载失败: ${e.message}`); }
+        setReadingStatsLoading(false);
+    };
+
+    const openRequest = useRef(0);
     const openBook = async (book: Book) => {
+        const requestId = ++openRequest.current;
+        window.dispatchEvent(new Event('coread-pause'));
         api.touchBookOpen(book.id).catch(() => {});
         setActiveBook(book); setMode('reading');
         setReadingLoading(true);
         setPage(1); setTotalPages(1); setPageBreaks([{ paraIndex: 0, offset: 0 }]); setPageFragments([]); setPaginateProgress(null);
         setParagraphs([]); setComments([]); setAllParas([]); setAllComments([]);
         currentParaIdxRef.current = null;
+        currentParaOffsetRef.current = 0;
+        savedParaOffsetRef.current = 0;
         provisionalRangeRef.current = null;
         {
             const bookTitle = book.title?.replace(/\s*\(.*?\)\s*/g, '').trim();
@@ -504,15 +573,18 @@ const StudyApp: React.FC = () => {
             // 段落内容也进 IndexedDB：二次打开跳过网络拉取（大书13万段逐块拉要约1-2分钟）
             try {
                 const cached = await idbGetParas(paraCacheKey);
+                if (requestId !== openRequest.current) return;
                 if (cached) {
                     const parsed = JSON.parse(cached);
                     if (parsed.totalParas === totalParas && Array.isArray(parsed.paragraphs) && parsed.paragraphs.length > 0) {
                         setAllParas(parsed.paragraphs);
                         const cachedComments = await idbGetParas(commentCacheKey);
+                        if (requestId !== openRequest.current) return;
                         const comments = cachedComments ? JSON.parse(cachedComments) : [];
                         setAllComments(comments);
                         setComments(comments);
-                        savedParaIdxRef.current = book.current_page || 0;
+                        savedParaIdxRef.current = book.current_paragraph_idx ?? 0;
+                        savedParaOffsetRef.current = book.current_paragraph_offset ?? 0;
                         cacheHit = true;
                     }
                 }
@@ -524,6 +596,7 @@ const StudyApp: React.FC = () => {
                 const seenCommentIds = new Set<number>();
                 for (let start = 0; start < totalParas; start += PARA_FETCH_CHUNK) {
                     const d = await api.fetchBookSlice(book.id, start, PARA_FETCH_CHUNK);
+                    if (requestId !== openRequest.current) return;
                     rawParas.push(...(d.paragraphs || []));
                     for (const cmt of (d.comments || []) as Comment[]) {
                         if (!seenCommentIds.has(cmt.id)) { seenCommentIds.add(cmt.id); fetchedComments.push(cmt); }
@@ -545,14 +618,15 @@ const StudyApp: React.FC = () => {
                 setAllParas(filtered);
                 setAllComments(fetchedComments);
                 setComments(fetchedComments);
-                savedParaIdxRef.current = book.current_page || 0;
+                savedParaIdxRef.current = book.current_paragraph_idx ?? 0;
+                savedParaOffsetRef.current = book.current_paragraph_offset ?? 0;
                 // 有内容时loading由分页effect跳页完成后关闭——这里提前关会先露出第1页再跳（闪烁）
                 if (filtered.length === 0) setReadingLoading(false);
                 idbSetParas(paraCacheKey, JSON.stringify({ paragraphs: filtered, totalParas })).catch(() => {});
                 idbSetParas(commentCacheKey, JSON.stringify(fetchedComments)).catch(() => {});
             }
-        } catch (e: any) { toast(`加载失败: ${e.message}`); setReadingLoading(false); }
-        api.fetchBookToc(book.id).then(d => setTocChapters(d.chapters || [])).catch(() => {});
+        } catch (e: any) { if (requestId === openRequest.current) { toast(`加载失败: ${e.message}`); setReadingLoading(false); } }
+        api.fetchBookToc(book.id).then(d => { if (requestId === openRequest.current) setTocChapters(d.chapters || []); }).catch(() => {});
     };
 
     const lockedHeightRef = useRef<number>(0);
@@ -677,6 +751,38 @@ const StudyApp: React.FC = () => {
             const progressive = allParas.length > PROGRESSIVE_MEASURE_THRESHOLD;
             provisionalRangeRef.current = null;
 
+            // 浏览器是唯一知道实际字号、宽高和断行结果的一端。把它测出的页首坐标
+            // 同步给服务端，MCP 之后按同一张页表读书，而不是再估算一遍。
+            const syncPagination = (resolvedBreaks: PageBreak[]) => {
+                if (!activeBook || resolvedBreaks.length === 0) return;
+                const serverBreaks = resolvedBreaks.map(b => {
+                    const para = allParas[b.paraIndex];
+                    return para ? { paragraph_idx: para.idx, offset: b.offset } : null;
+                }).filter(Boolean);
+                if (serverBreaks.length === 0) return;
+                api.syncBookPagination(activeBook.id, {
+                    version: 1,
+                    source_paragraph_count: activeBook.total_paragraphs,
+                    paragraph_ids: allParas.map(p => p.idx),
+                    breaks: serverBreaks,
+                    viewport: {
+                        width: readerContentWidth,
+                        height: readerSize.height,
+                        font_size: readerFontSize,
+                    },
+                }).catch(() => {});
+            };
+
+            const pageForAnchor = (resolvedBreaks: PageBreak[], anchorIdx: number, anchorOffset: number) => {
+                const pi = allParas.findIndex(p => p.idx >= anchorIdx);
+                if (pi < 0) return 0;
+                for (let i = resolvedBreaks.length - 1; i >= 0; i--) {
+                    const b = resolvedBreaks[i];
+                    if (b.paraIndex < pi || (b.paraIndex === pi && b.offset <= anchorOffset)) return i;
+                }
+                return 0;
+            };
+
             // 后手优化判定——缓存miss且锚点够靠后时，先快速分当前位置±PROVISIONAL_WIN段的临时页
             // 立即可读，全书分页随后照常从0跑完后替换
             const anchorIdx0 = savedParaIdxRef.current ?? currentParaIdxRef.current ?? allParas[0]?.idx ?? 0;
@@ -701,14 +807,15 @@ const StudyApp: React.FC = () => {
                         if (sizeOk && paraCount === allParas.length && Array.isArray(cachedBreaks) && cachedBreaks.length > 0) {
                             setPageBreaks(cachedBreaks);
                             setTotalPages(Math.max(1, cachedBreaks.length));
+                            syncPagination(cachedBreaks);
                             if (!suppressPageJumpRef.current) {
                                 const anchorIdx = savedParaIdxRef.current ?? currentParaIdxRef.current ?? allParas[0]?.idx ?? 0;
-                                const pi = allParas.findIndex(p => p.idx >= anchorIdx);
-                                let targetPage = 0;
-                                if (pi >= 0) { for (let i = cachedBreaks.length - 1; i >= 0; i--) if (cachedBreaks[i].paraIndex <= pi) { targetPage = i; break; } }
+                                const anchorOffset = savedParaIdxRef.current != null ? savedParaOffsetRef.current : currentParaOffsetRef.current;
+                                const targetPage = pageForAnchor(cachedBreaks, anchorIdx, anchorOffset);
                                 setPage(Math.max(1, Math.min(cachedBreaks.length, targetPage + 1)));
                             }
                             savedParaIdxRef.current = null;
+                            savedParaOffsetRef.current = 0;
                             setReadingLoading(false);
                             return;
                         }
@@ -845,6 +952,7 @@ const StudyApp: React.FC = () => {
                     for (let k = wb.length - 1; k >= 0; k--) { if (wb[k].paraIndex <= anchorPi0) { tp = k; break; } }
                     setPage(tp + 1);
                     savedParaIdxRef.current = null; // 锚点已用掉，全书分页完成时按实时阅读位置重映射
+                    savedParaOffsetRef.current = 0;
                     setReadingLoading(false); // 立即可读；全书分页下面照常跑
                 }
             }
@@ -902,6 +1010,7 @@ const StudyApp: React.FC = () => {
             provisionalRangeRef.current = null; // 最终页表替换临时页表，解除窗外跳转拦截
             setPageBreaks(breaks);
             setTotalPages(Math.max(1, breaks.length));
+            syncPagination(breaks);
             if (paginationCacheKey) {
                 const payload = JSON.stringify({
                     breaks, paraCount: allParas.length,
@@ -937,22 +1046,19 @@ const StudyApp: React.FC = () => {
             }
             if (!suppressPageJumpRef.current) {
                 const anchorIdx = savedParaIdxRef.current ?? currentParaIdxRef.current ?? allParas[0]?.idx ?? 0;
-                const targetPage = (() => {
-                    const pi = allParas.findIndex(p => p.idx >= anchorIdx);
-                    if (pi < 0) return 0;
-                    for (let i = breaks.length - 1; i >= 0; i--) if (breaks[i].paraIndex <= pi) return i;
-                    return 0;
-                })();
+                const anchorOffset = savedParaIdxRef.current != null ? savedParaOffsetRef.current : currentParaOffsetRef.current;
+                const targetPage = pageForAnchor(breaks, anchorIdx, anchorOffset);
                 setPage(Math.max(1, Math.min(breaks.length, targetPage + 1)));
             }
             savedParaIdxRef.current = null;
+            savedParaOffsetRef.current = 0;
             setPaginateProgress(null);
             setReadingLoading(false);
             if (provisionalShown) toast('全书分页已完成');
         };
         run();
         return () => { cancelled = true; };
-    }, [mode, allParas, readerContentWidth, readerSize.height, readerFontSize]);
+    }, [mode, allParas, readerContentWidth, readerSize.height, readerFontSize, activeBook?.id, activeBook?.total_paragraphs]);
 
     useEffect(() => {
         if (allParas.length === 0 || pageBreaks.length === 0) {
@@ -960,6 +1066,7 @@ const StudyApp: React.FC = () => {
             setParagraphs([]);
             setComments([]);
             currentParaIdxRef.current = null;
+            currentParaOffsetRef.current = 0;
             return;
         }
         if (page > pageBreaks.length && !suppressPageJumpRef.current) {
@@ -983,8 +1090,9 @@ const StudyApp: React.FC = () => {
         setParagraphs(visibleParas);
         setComments(allComments);
         currentParaIdxRef.current = visibleParas[0]?.idx ?? null;
+        currentParaOffsetRef.current = start.offset;
         if (activeBook && visibleParas.length > 0) {
-            api.updateBookProgress(activeBook.id, visibleParas[0].idx).catch(() => {});
+            api.updateBookProgress(activeBook.id, visibleParas[0].idx, start.offset).catch(() => {});
         }
     }, [page, pageBreaks, allParas, allComments, activeBook?.id]);
 
@@ -995,6 +1103,7 @@ const StudyApp: React.FC = () => {
             setActiveComments([]); setCommentingIdx(null); setSelRange(null); setFloatingBar(null);
             setPage(next);
             if (next === totalPages && totalPages > 1) {
+                api.markBookFinished(activeBook.id, localDateString()).catch(() => {});
                 const bookTitle = activeBook.title?.replace(/\s*\(.*?\)\s*/g, '').trim();
                 fetch('/v1/reading-wishlist').then(r => r.json()).then(res => {
                     const match = (res.items || []).find((w: any) => w.status === 'reading' && w.title?.trim() === bookTitle);
@@ -1007,6 +1116,36 @@ const StudyApp: React.FC = () => {
                 }).catch(() => {});
             }
         }
+    };
+
+    const handleContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (mode !== 'reading') {
+            if (activeComments.length) setActiveComments([]);
+            return;
+        }
+
+        // Touch browsers commonly emit a click after touchend. A completed swipe
+        // already changed the page, so ignore that synthetic click.
+        if (suppressTapRef.current) {
+            suppressTapRef.current = false;
+            if (suppressTapTimer.current) clearTimeout(suppressTapTimer.current);
+            suppressTapTimer.current = null;
+            return;
+        }
+
+        const target = e.target as HTMLElement;
+        if (target.closest('button, a, input, textarea, select, [role="button"], [data-reader-interactive]')) return;
+
+        // Finishing a mouse drag or long-press selection can also emit a click.
+        // Keep annotation selection intact instead of accidentally turning a page.
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed && selection.toString().trim()) return;
+
+        const rect = e.currentTarget.getBoundingClientRect();
+        const tapPosition = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
+        if (tapPosition < 0.3) goPage(-1);
+        else if (tapPosition > 0.7) goPage(1);
+        else toggleBar();
     };
 
     const startAnnotation = () => {
@@ -1162,6 +1301,8 @@ const StudyApp: React.FC = () => {
     };
 
     const backToShelf = () => {
+        ++openRequest.current;
+        window.dispatchEvent(new Event('coread-pause'));
         setMode('shelf'); setActiveBook(null); setParagraphs([]); setComments([]);
         setActiveComments([]); setSelRange(null); setFloatingBar(null); setShowToc(false); setTocChapters([]);
         setReturnPoint(null);
@@ -1260,6 +1401,9 @@ const StudyApp: React.FC = () => {
                 <div style={{ position: 'absolute', bottom: 70, left: -70, width: 200, height: 200, borderRadius: '50%', background: `radial-gradient(circle, ${c.warmBg}34, transparent 68%)`, pointerEvents: 'none', filter: 'blur(12px)', opacity: 0.65 }} />
             </>}
 
+            {mode === 'reading' && !readingLoading && <div className={`session-clock ${readerNightMode ? 'dark' : ''}`} role="status">
+                本次阅读 {duration(readingClock.seconds)}{readingClock.error && ` · ${readingClock.error}`}
+            </div>}
             {/* Header — shelf always shows; reading mode header slides with toolbar */}
             {mode === 'shelf' ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 'calc(52px + env(safe-area-inset-top))', paddingLeft: 20, paddingRight: 20, paddingBottom: 12, flexShrink: 0 }}>
@@ -1282,7 +1426,10 @@ const StudyApp: React.FC = () => {
                     <button onClick={() => { setEditMode(!editMode); setSelectedBooks(new Set()); }} style={btnBase}>
                         <span style={{ fontSize: 12, color: editMode ? '#e55' : c.primary, fontWeight: 600 }}>{editMode ? '完成' : '管理'}</span>
                     </button>
-                    <button onClick={() => setShowSettings(true)} style={btnBase}>
+                    <button onClick={openReadingStats} style={btnBase} aria-label="阅读记录" title="阅读记录">
+                        <span style={{ fontSize: 12, color: c.primary, fontWeight: 600 }}>记录</span>
+                    </button>
+                    <button aria-label="设置" onClick={() => setShowSettings(true)} style={btnBase}>
                         <span style={{ fontSize: 14, color: c.primary }}>⚙</span>
                     </button>
                     <button onClick={() => setShowUpload(true)} style={btnBase}>
@@ -1294,9 +1441,9 @@ const StudyApp: React.FC = () => {
                     {/* Persistent book title — always visible, small grey text */}
                     <div style={{
                         paddingTop: 'calc(12px + env(safe-area-inset-top))', paddingLeft: 20, paddingRight: 20, paddingBottom: 6, textAlign: 'center', flexShrink: 0,
-                        background: '#fafaf8',
+                        background: readerNightMode ? '#1a1a1a' : '#fafaf8',
                     }}>
-                        <div style={{ fontSize: 11, color: '#aaa', letterSpacing: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: 11, color: readerNightMode ? '#777' : '#aaa', letterSpacing: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {activeBook?.title || ''}
                         </div>
                     </div>
@@ -1307,7 +1454,7 @@ const StudyApp: React.FC = () => {
                         transition: 'opacity 0.3s ease, transform 0.3s ease',
                         pointerEvents: showBar ? 'auto' : 'none',
                     }}>
-                        <button onClick={backToShelf} style={btnBase}>
+                        <button aria-label="关闭书籍" onClick={backToShelf} style={{ ...btnBase, background: readerNightMode ? 'rgba(45,45,45,0.85)' : btnBase.background }}>
                             <span style={{ fontSize: 16, color: c.primary }}>✕</span>
                         </button>
                     </div>
@@ -1315,12 +1462,15 @@ const StudyApp: React.FC = () => {
             )}
 
             {/* Content */}
-            <div ref={contentRef} style={{
+            <div ref={contentRef} data-testid="reader-surface" data-display-page={page} style={{
                 flex: 1, overflow: mode === 'reading' ? 'hidden' : 'auto', position: 'relative',
                 padding: mode === 'reading' ? '0' : '8px 20px 32px',
                 background: mode === 'reading' ? (readerNightMode ? '#1a1a1a' : '#fafaf8') : 'transparent',
+                touchAction: mode === 'reading' ? 'pan-y' : undefined,
+                overscrollBehaviorX: mode === 'reading' ? 'none' : undefined,
+                WebkitTapHighlightColor: mode === 'reading' ? 'transparent' : undefined,
             }} className="no-scrollbar study-scroll-container"
-                onClick={() => { if (mode === 'reading') toggleBar(); else if (activeComments.length) setActiveComments([]); }}
+                onClick={handleContentClick}
                 onTouchStart={mode === 'reading' ? (e) => {
                     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
                 } : undefined}
@@ -1331,6 +1481,12 @@ const StudyApp: React.FC = () => {
                     const dt = Date.now() - touchStart.current.t;
                     touchStart.current = null;
                     if (dt > 500 || Math.abs(dy) > Math.abs(dx) || Math.abs(dx) < 60) return;
+                    suppressTapRef.current = true;
+                    if (suppressTapTimer.current) clearTimeout(suppressTapTimer.current);
+                    suppressTapTimer.current = setTimeout(() => {
+                        suppressTapRef.current = false;
+                        suppressTapTimer.current = null;
+                    }, 500);
                     if (dx < -60) goPage(1);
                     else if (dx > 60) goPage(-1);
                 } : undefined}>
@@ -1351,15 +1507,21 @@ const StudyApp: React.FC = () => {
                                 <div style={{ fontSize: 12, color: '#ccc' }}>点右上角 + 上传一本书</div>
                             </div>
                         ) : (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 148px))',
+                                columnGap: 16,
+                                rowGap: 18,
+                                justifyContent: 'start',
+                            }}>
                                 {[...books].sort((a, b) => {
                                     const aTime = a.last_read_at ? new Date(a.last_read_at).getTime() : 0;
                                     const bTime = b.last_read_at ? new Date(b.last_read_at).getTime() : 0;
                                     if (aTime || bTime) { if (aTime !== bTime) return bTime - aTime; }
                                     return b.id - a.id;
                                 }).map((book, i) => {
-                                    const progress = book.current_page && book.total_paragraphs > 0
-                                        ? Math.round(((book.current_page * 10) / book.total_paragraphs) * 100) : 0;
+                                    const progress = book.current_display_page && book.total_pages
+                                        ? Math.round((book.current_display_page / book.total_pages) * 100) : 0;
                                     return (
                                         <div key={book.id} style={{ position: 'relative' }}>
                                             <button onClick={() => {
@@ -1752,11 +1914,14 @@ const StudyApp: React.FC = () => {
                 </>
             )}
 
+            {showReadingStats && <ReadingJournal stats={readingStats} loading={readingStatsLoading} dark={readerNightMode} close={() => setShowReadingStats(false)} />}
+
+
             {/* Settings overlay */}
             {showSettings && (
                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', zIndex: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
                     onClick={() => setShowSettings(false)}>
-                    <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 20, padding: '24px 22px', width: '100%', maxWidth: 340, boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }}>
+                    <div className={`settings-panel ${readerNightMode ? 'dark' : ''}`} onClick={e => e.stopPropagation()} style={{ borderRadius: 20, padding: '24px 22px', width: '100%', maxWidth: 380, boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }}>
                         <div style={{ fontSize: 15, fontWeight: 700, color: c.primaryDark, marginBottom: 18 }}>设置 Settings</div>
                         <label style={{ fontSize: 12, color: '#888', display: 'block', marginBottom: 6 }}>我的名字 My Name</label>
                         <input value={humanName} onChange={e => { setHumanName(e.target.value); localStorage.setItem('coread-human-name', e.target.value); }}
@@ -1773,6 +1938,7 @@ const StudyApp: React.FC = () => {
                             <span style={{ fontSize: 12, color: '#aaa' }}>大</span>
                             <span style={{ fontSize: 12, color: c.primary, fontWeight: 600, minWidth: 28, textAlign: 'center' }}>{readerFontSize}px</span>
                         </div>
+                        <BackupControls />
                         <button onClick={() => setShowSettings(false)} style={{ width: '100%', padding: '10px 0', borderRadius: 14, background: c.primary, border: 'none', color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>完成</button>
                     </div>
                 </div>
@@ -1801,7 +1967,7 @@ const StudyApp: React.FC = () => {
 
                         <div style={{ textAlign: 'center', fontSize: 11, color: '#ccc', margin: '4px 0 8px' }}>— 或者 —</div>
 
-                        <textarea value={uploadText} onChange={e => { setUploadText(e.target.value); setPdfBase64(''); setUploadFileName(''); }}
+                        <textarea value={uploadText} onChange={e => { setUploadText(e.target.value); setUploadFile(null); setUploadFileName(''); }}
                             placeholder="粘贴文本内容...（段落之间用空行分隔）"
                             style={{ width: '100%', minHeight: 100, padding: '10px 14px', borderRadius: 12, border: `1px solid ${c.primaryBorder}`, fontSize: 13, outline: 'none', resize: 'vertical', background: c.primaryBg, color: '#333', lineHeight: 1.5 }} />
 
