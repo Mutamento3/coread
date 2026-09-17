@@ -301,6 +301,7 @@ const StudyApp: React.FC = () => {
     const [showFontPanel, setShowFontPanel] = useState(false);
     const [readerBrightness, setReaderBrightness] = useState(() => parseInt(localStorage.getItem('coread-brightness') || '100', 10));
     const [readerNightMode, setReaderNightMode] = useState(() => localStorage.getItem('coread-night-mode') === 'true');
+    const [showSessionClock, setShowSessionClock] = useState(() => localStorage.getItem('coread-show-session-clock') === 'true');
     const displayName = (from: string) => {
         const lower = from.toLowerCase();
         if (lower === 'human' || lower === humanName.toLowerCase()) return humanName;
@@ -1401,7 +1402,7 @@ const StudyApp: React.FC = () => {
                 <div style={{ position: 'absolute', bottom: 70, left: -70, width: 200, height: 200, borderRadius: '50%', background: `radial-gradient(circle, ${c.warmBg}34, transparent 68%)`, pointerEvents: 'none', filter: 'blur(12px)', opacity: 0.65 }} />
             </>}
 
-            {mode === 'reading' && !readingLoading && <div className={`session-clock ${readerNightMode ? 'dark' : ''}`} role="status">
+            {mode === 'reading' && !readingLoading && showSessionClock && <div className={`session-clock ${readerNightMode ? 'dark' : ''}`} role="status">
                 本次阅读 {duration(readingClock.seconds)}{readingClock.error && ` · ${readingClock.error}`}
             </div>}
             {/* Header — shelf always shows; reading mode header slides with toolbar */}
@@ -1509,7 +1510,7 @@ const StudyApp: React.FC = () => {
                         ) : (
                             <div style={{
                                 display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 148px))',
+                                gridTemplateColumns: 'repeat(auto-fill, 100px)',
                                 columnGap: 16,
                                 rowGap: 18,
                                 justifyContent: 'start',
@@ -1937,6 +1938,14 @@ const StudyApp: React.FC = () => {
                                 style={{ flex: 1, accentColor: c.primary }} />
                             <span style={{ fontSize: 12, color: '#aaa' }}>大</span>
                             <span style={{ fontSize: 12, color: c.primary, fontWeight: 600, minWidth: 28, textAlign: 'center' }}>{readerFontSize}px</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                            <span style={{ fontSize: 13, color: c.primaryDark }}>显示本次阅读时长</span>
+                            <button onClick={() => { const v = !showSessionClock; setShowSessionClock(v); localStorage.setItem('coread-show-session-clock', String(v)); }}
+                                aria-pressed={showSessionClock}
+                                style={{ width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: showSessionClock ? c.primary : '#ddd', position: 'relative', transition: 'background .2s', flexShrink: 0 }}>
+                                <span style={{ position: 'absolute', top: 2, left: showSessionClock ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                            </button>
                         </div>
                         <BackupControls />
                         <button onClick={() => setShowSettings(false)} style={{ width: '100%', padding: '10px 0', borderRadius: 14, background: c.primary, border: 'none', color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>完成</button>
