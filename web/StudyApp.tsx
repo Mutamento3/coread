@@ -389,6 +389,18 @@ const StudyApp: React.FC = () => {
     // 批注作者名、isShen 判色、回复提醒的兜底名全部走这两个值。
     const [humanName, setHumanName] = useState(() => localStorage.getItem('coread-human-name') || '彤宝');
     const [aiName, setAiName] = useState(() => localStorage.getItem('coread-ai-name') || '沉');
+    // 名字设置搬服务端（沉哥复审 bug③：localStorage 不跨设备）——挂载拉一次，改动双写
+    useEffect(() => {
+        fetch(`${window.location.origin}/coread/v1/settings`).then(r => r.json()).then(d => {
+            if (d.human_name) { setHumanName(d.human_name); localStorage.setItem('coread-human-name', d.human_name); }
+            if (d.ai_name) { setAiName(d.ai_name); localStorage.setItem('coread-ai-name', d.ai_name); }
+        }).catch(() => {});
+    }, []);
+    const saveName = (key: 'human_name' | 'ai_name', v: string) => {
+        if (!v.trim()) return;
+        fetch(`${window.location.origin}/coread/v1/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [key]: v.trim() }) }).catch(() => {});
+    };
+    const displayWho = (who: string) => { const w = String(who || ''); return w === 'human' ? humanName : (w === 'ai' || isAiAuthor(w)) ? aiName : w; };
     const isAiAuthor = (who: string) => { const w = String(who || ''); const lw = w.toLowerCase(); return w === '沉' || lw === 'seth' || lw === 'ai' || (!!aiName && lw === aiName.toLowerCase()); };
     const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
     // 内页重设计 v1（SPEC-v1.md）：右下 ≡ 浮层菜单 + 玻璃抽屉族
@@ -967,7 +979,12 @@ const StudyApp: React.FC = () => {
                 const height = Math.max(0, Math.round(el.clientHeight - READER_VERTICAL_PADDING_STATIC - getSafeAreaBottom()));
                 setReaderSize(prev => {
                     if (prev.width === width && prev.height === height) return prev;
-                    if (prev.height > 0 && height < prev.height * 0.8 && width === prev.width) return prev;
+                    // 只在输入框聚焦（=软键盘弹出）时忽略"高缩宽不变"；无聚焦的同几何变化是小窗/分屏，必须重排。
+                    // 旧判据只看几何，把小窗误当键盘吞掉——小窗不重新分页回归案（2026-09-20，task-…c9bzwo）
+                    if (prev.height > 0 && height < prev.height * 0.8 && width === prev.width) {
+                        const ae = document.activeElement as HTMLElement | null;
+                        if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return prev;
+                    }
                     return { width, height };
                 });
             });
@@ -1421,7 +1438,7 @@ const StudyApp: React.FC = () => {
         if (!activeBook || commentingIdx === null || !commentText.trim()) return;
         try {
             const result = await addBookComment(bridgeConfig, activeBook.id, {
-                paragraph_idx: commentingIdx, content: commentText.trim(), from_who: humanName,
+                paragraph_idx: commentingIdx, content: commentText.trim(), from_who: 'human',
                 selected_text: selectedText || undefined,
                 sel_start_idx: selRange ? selRange.start : undefined,
                 sel_end_idx: selRange ? selRange.end : undefined,
@@ -1432,7 +1449,7 @@ const StudyApp: React.FC = () => {
                 id: result?.id ?? Date.now(), book_id: activeBook.id, paragraph_idx: commentingIdx,
                 sel_start_idx: selRange?.start ?? null, sel_end_idx: selRange?.end ?? null,
                 sel_end_para_idx: selRange && selRange.endPara !== selRange.startPara ? selRange.endPara : null,
-                selected_text: selectedText || null, from_who: humanName,
+                selected_text: selectedText || null, from_who: 'human',
                 content: commentText.trim(), created_at: new Date().toISOString(), reply_to: replyingTo?.id ?? null,
             };
             const pageToRestore = replyPageRef.current ?? page;
@@ -2085,7 +2102,7 @@ const StudyApp: React.FC = () => {
                                                     )}
                                                 </div>
                                             </button>
-                                            {!editMode && (
+                                            {editMode && (
                                                 <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(book.id); }}
                                                     style={{ position: 'absolute', top: 4, left: 8, width: 20, height: 20, borderRadius: '50%', background: 'rgba(0,0,0,0.4)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                                     <span style={{ color: 'white', fontSize: 12, lineHeight: 1 }}>×</span>
@@ -2144,7 +2161,7 @@ const StudyApp: React.FC = () => {
                                         );
                                     }
                                     return (
-                                        <div key={`${frag.idx}-${frag.startOffset}-${frag.endOffset}`} style={{ marginBottom: chapterTitle ? CHAPTER_GAP_BOTTOM : PARA_GAP, marginTop: chapterTitle && visibleIndex > 0 ? CHAPTER_GAP_TOP : 0 }}>
+                                        <div key={`${frag.idx}-${frag.startOffset}-${frag.endOffset}`} style={{ position: 'relative', marginBottom: chapterTitle ? CHAPTER_GAP_BOTTOM : PARA_GAP, marginTop: chapterTitle && visibleIndex > 0 ? CHAPTER_GAP_TOP : 0 }}>
                                             <div data-para-idx={frag.idx} data-frag-start={frag.startOffset} data-frag-end={frag.endOffset} style={{
                                                 fontSize: chapterTitle ? readerFontSize + 4 : original.content.trim().startsWith('# ') ? readerFontSize + 3 : original.content.trim().startsWith('## ') ? readerFontSize + 2 : readerFontSize,
                                                 lineHeight: chapterTitle ? 2.2 : 1.85, color: readerNightMode ? (heading ? '#ddd' : '#ccc') : (heading ? '#222' : '#333'),
@@ -2158,13 +2175,13 @@ const StudyApp: React.FC = () => {
                                             </div>
 
                                             {blockComments.length > 0 && (
-                                                <div style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                                <div style={{ position: 'absolute', left: 0, bottom: -2, display: 'inline-flex', alignItems: 'center', gap: 4, pointerEvents: 'auto' }}>
                                                     {blockComments.filter(x => !x.reply_to).map(cmt => {
                                                         const isShen = isAiAuthor(cmt.from_who);
                                                         const color = isShen ? c.shenColor : c.tongColor;
                                                         return (
                                                             <span key={cmt.id} onClick={(e) => { e.stopPropagation(); const allR: Comment[] = []; const findR = (ids: number[]) => { const f = comments.filter(r => r.reply_to && ids.includes(r.reply_to)); if (f.length) { allR.push(...f); findR(f.map(x => x.id)); } }; findR([cmt.id]); setActiveComments(prev => prev.length > 0 && prev[0]?.id === cmt.id ? [] : [cmt, ...allR]); }}
-                                                                style={{ width: 8, height: 8, borderRadius: '50%', background: color, cursor: 'pointer', display: 'inline-block', opacity: 0.7 }} />
+                                                                style={{ width: 10, height: 10, borderRadius: '50%', background: color, cursor: 'pointer', display: 'inline-block', boxShadow: `0 0 4px ${color}80` }} />
                                                         );
                                                     })}
                                                 </div>
@@ -2252,7 +2269,7 @@ const StudyApp: React.FC = () => {
                             return (
                                 <div key={ac.id} style={{ marginLeft: indent ? 28 : 0, marginBottom: 12, paddingBottom: 12, borderBottom: indent ? 'none' : `1px solid ${dividerColor}` }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                                        <span style={{ fontSize: 12, fontWeight: 600, color: inkColor }}>{ac.from_who}</span>
+                                        <span style={{ fontSize: 12, fontWeight: 600, color: inkColor }}>{displayWho(ac.from_who)}</span>
                                         <span style={{ fontSize: 10, color: subColor }}>{ac.created_at?.slice(0, 16).replace('T', ' ')}</span>
                                     </div>
                                     {ac.selected_text && (
@@ -2325,7 +2342,7 @@ const StudyApp: React.FC = () => {
                     transition: 'bottom 0.3s ease',
                 }}>
                     <span style={{ color: readerNightMode ? '#ddd' : INK, fontSize: 12, fontWeight: 600 }}>
-                        {(() => { const names = [...new Set(newReplies.map(r => r.from_who).filter(Boolean))]; const who = names.length === 0 ? '新' : names.length === 1 ? names[0] : `${names[0]} 等`; return `${who} · ${newReplies.length} 条新批注`; })()}
+                        {(() => { const names = [...new Set(newReplies.map(r => displayWho(r.from_who || 'ai')).filter(Boolean))]; const who = names.length === 0 ? '新' : names.length === 1 ? names[0] : `${names[0]} 等`; return `${who} · ${newReplies.length} 条新批注`; })()}
                     </span>
                 </div>
             )}
@@ -2353,7 +2370,7 @@ const StudyApp: React.FC = () => {
                                         {r.parent_from}: {r.parent_content.length > 40 ? r.parent_content.slice(0, 40) + '...' : r.parent_content}
                                     </div>
                                 )}
-                                <div style={{ fontSize: 12, fontWeight: 600, color: readerNightMode ? '#ddd' : INK, marginBottom: 3 }}>{r.from_who || aiName} · 批注</div>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: readerNightMode ? '#ddd' : INK, marginBottom: 3 }}>{displayWho(r.from_who || 'ai')} · 批注</div>
                                 <div style={{ fontSize: 13, color: readerNightMode ? '#ccc' : 'hsl(40,6%,30%)', lineHeight: 1.6 }}>{r.content}</div>
                                 <div style={{ fontSize: 10, color: readerNightMode ? '#777' : '#aaa', marginTop: 4 }}>{(() => { const pg = findPageForParaIdx(r.paragraph_idx, totalPages, r.sel_start_idx ?? 0); return pg >= 0 ? `p${pg + 1}` : (r as any).page ? `p${(r as any).page}` : ''; })()} · 点开定位到原文</div>
                             </div>
@@ -2549,10 +2566,10 @@ const StudyApp: React.FC = () => {
                                             {/* 名字设置（coread 移植保留，彤彤点名不许丢）：批注作者名随改随存 */}
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 }}>
                                                 <span style={{ fontSize: 13, fontWeight: 600, color: sInk, flexShrink: 0 }}>名字</span>
-                                                <input value={humanName} onChange={e => { setHumanName(e.target.value); localStorage.setItem('coread-human-name', e.target.value); }}
+                                                <input value={humanName} onChange={e => { setHumanName(e.target.value); localStorage.setItem('coread-human-name', e.target.value); saveName('human_name', e.target.value); }}
                                                     placeholder="我的名字"
                                                     style={{ flex: 1, minWidth: 0, padding: '8px 12px', borderRadius: 12, border: `1px solid ${readerNightMode ? 'rgba(255,255,255,0.12)' : 'rgba(60,55,45,0.12)'}`, background: readerNightMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)', fontSize: 13, color: sInk, outline: 'none' }} />
-                                                <input value={aiName} onChange={e => { setAiName(e.target.value); localStorage.setItem('coread-ai-name', e.target.value); }}
+                                                <input value={aiName} onChange={e => { setAiName(e.target.value); localStorage.setItem('coread-ai-name', e.target.value); saveName('ai_name', e.target.value); }}
                                                     placeholder="AI 的名字"
                                                     style={{ flex: 1, minWidth: 0, padding: '8px 12px', borderRadius: 12, border: `1px solid ${readerNightMode ? 'rgba(255,255,255,0.12)' : 'rgba(60,55,45,0.12)'}`, background: readerNightMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)', fontSize: 13, color: sInk, outline: 'none' }} />
                                             </div>
@@ -2624,11 +2641,11 @@ const StudyApp: React.FC = () => {
                                         <div style={{ height: '0.5px', background: 'hsla(245,20%,40%,0.12)', margin: '4px 11px' }} />
                                         <div style={{ padding: '8px 11px' }}>
                                             <div style={{ fontSize: 11, color: INK2, marginBottom: 4 }}>我的名字（批注落款）</div>
-                                            <input value={humanName} onChange={e => { setHumanName(e.target.value); localStorage.setItem('coread-human-name', e.target.value); }}
+                                            <input value={humanName} onChange={e => { setHumanName(e.target.value); localStorage.setItem('coread-human-name', e.target.value); saveName('human_name', e.target.value); }}
                                                 placeholder="我的名字"
                                                 style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 12, border: '1px solid rgba(60,55,45,0.12)', background: 'rgba(255,255,255,0.5)', fontSize: 13, color: INK, outline: 'none' }} />
                                             <div style={{ fontSize: 11, color: INK2, margin: '8px 0 4px' }}>AI 的名字</div>
-                                            <input value={aiName} onChange={e => { setAiName(e.target.value); localStorage.setItem('coread-ai-name', e.target.value); }}
+                                            <input value={aiName} onChange={e => { setAiName(e.target.value); localStorage.setItem('coread-ai-name', e.target.value); saveName('ai_name', e.target.value); }}
                                                 placeholder="AI 的名字"
                                                 style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 12, border: '1px solid rgba(60,55,45,0.12)', background: 'rgba(255,255,255,0.5)', fontSize: 13, color: INK, outline: 'none' }} />
                                         </div>
@@ -2668,20 +2685,6 @@ const StudyApp: React.FC = () => {
                                                 <div onClick={() => restoreFileRef.current?.click()} style={{ fontSize: 12, color: INK, padding: '6px 0', cursor: 'pointer' }}>从本机选择备份文件…</div>
                                             </div>
                                         )}
-                                        <div onClick={async () => {
-                                            // 修复旧书跳转（彤彤 2026-09-20）：调用服务端重建引擎；引擎（task-1789848213232-2cn65p）未上线时如实提示
-                                            setShowMenu(false);
-                                            try {
-                                                const r = await fetch(`${bridgeConfig.url}/v1/books/repair-jumps`, { method: 'POST' });
-                                                if (r.status === 404 || r.status === 501) { addToast?.('修复引擎还在路上（小1评估中），上线后这里直接可用'); return; }
-                                                const d = await r.json();
-                                                addToast?.(d.message || `修复完成：${d.repaired ?? 0} 本`);
-                                                loadBooks();
-                                            } catch { addToast?.('修复引擎还在路上（小1评估中），上线后这里直接可用'); }
-                                        }} style={{ padding: '7px 11px', cursor: 'pointer' }}>
-                                            <div style={{ fontSize: 13, color: INK }}>修复旧书跳转</div>
-                                            <div style={{ fontSize: 11, color: INK2, marginTop: 1 }}>重建老书的标注点击跳转，不用重新传书</div>
-                                        </div>
                                     </>
                                 )}
                             </div>

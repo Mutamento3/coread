@@ -17,8 +17,8 @@ export const addBookComment = (_config: BridgeConfig, bookId: number, data: any)
     api.addBookComment(bookId, data);
 export const deleteBookComment = (_config: BridgeConfig, commentId: number) =>
     api.deleteBookComment(commentId);
-export const updateBookProgress = (_config: BridgeConfig, bookId: number, page: number) =>
-    api.updateBookProgress(bookId, page);
+export const updateBookProgress = (_config: BridgeConfig, bookId: number, page: number, paragraphOffset = 0) =>
+    api.updateBookProgress(bookId, page, paragraphOffset);
 export const uploadBookFile = (_config: BridgeConfig, file: Blob, title: string, format: string) =>
     api.uploadBookFile(file, title, format);
 export const exportBook = (_config: BridgeConfig, bookId: number, format: 'epub' | 'md' = 'epub') =>

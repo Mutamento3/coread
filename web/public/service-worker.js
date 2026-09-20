@@ -17,7 +17,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const request = event.request;
   const url = new URL(request.url);
-  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/v1/')) return;
+  if (request.method !== 'GET' || url.origin !== self.location.origin || (url.pathname.startsWith('/v1/') || url.pathname.startsWith('/coread/v1/'))) return;
 
   event.respondWith(
     fetch(request)

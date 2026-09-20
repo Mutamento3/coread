@@ -59,7 +59,12 @@ const server = http.createServer(async (req, res) => {
   try {
     const data = fs.readFileSync(filePath);
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+    // assets/文件名带内容hash可永久缓存；html等无hash文件必须回源验新，
+    // 否则浏览器捧着旧index.html引旧bundle，服务器怎么更新用户都看不到（2026-09-20彤宝鬼打墙案）
+    const cacheControl = filePath.includes(`${path.sep}assets${path.sep}`)
+      ? 'public, max-age=31536000, immutable'
+      : 'no-cache';
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': cacheControl });
     res.end(data);
   } catch {
     res.writeHead(404);
