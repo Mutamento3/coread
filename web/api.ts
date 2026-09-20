@@ -1,4 +1,4 @@
-const BASE = window.location.origin;
+const BASE = window.location.origin + '/coread';  // 经桥 /coread/ 前缀反代时 API 也走同一前缀
 
 // 共读室关门锁 owner key（task-1786030476040-meb33p）：与 app 端同 key，锁定期彤宝的 web 端照常放行
 export const ROOM_OWNER_KEY = 'xk-room-owner-f47ac10b58d2e619a3c4';

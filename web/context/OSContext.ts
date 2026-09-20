@@ -7,7 +7,7 @@ export interface OSTheme { hue: number; saturation: number; lightness: number }
 
 // key 仅作「已配置」真值标记（SullyOS UI 在 key 为空时拒绝加载书架）；
 // coread 服务端不做 Bearer 鉴权，同源请求天然可信。
-const bridgeConfig: BridgeConfig = { url: '', key: 'coread-local' };
+const bridgeConfig: BridgeConfig = { url: '/coread', key: 'coread-local' };  // 经桥前缀反代
 const theme: OSTheme = { hue: 245, saturation: 25, lightness: 65 };
 
 let toastSeq = 0;
