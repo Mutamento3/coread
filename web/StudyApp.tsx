@@ -375,7 +375,7 @@ const StudyApp: React.FC = () => {
     const [doorLocked, setDoorLocked] = useState(false);
     const batchFileRef = useRef<HTMLInputElement>(null);
     // 重设计 v1：⋯ 菜单 / + 面板的展开层（原地 morph 的功能页）与弹出相位
-    const [menuDetail, setMenuDetail] = useState<'records' | 'manage' | 'backup' | null>(null);
+    const [menuDetail, setMenuDetail] = useState<'records' | 'manage' | 'backup' | 'names' | null>(null);
     const [panelDetail, setPanelDetail] = useState<'file' | 'text' | null>(null);
     const [menuPhase, setMenuPhase] = useState<'closed' | 'anim' | 'open' | 'closing'>('closed');
     const [panelPhase, setPanelPhase] = useState<'closed' | 'anim' | 'open' | 'closing'>('closed');
@@ -1771,7 +1771,7 @@ const StudyApp: React.FC = () => {
     }, [backupFiles, menuDetail, menuPhase]);
     // 整窗关闭才重置展开态（彤彤 2026-09-20：返回列表层途中重置会把内容从动画里拽出来，造成卡顿）
     useEffect(() => { if (menuPhase === 'closed') { setBackupFiles(null); setRestorePreview(null); } }, [menuPhase]);
-    const openMenuDetail = (d: 'records' | 'manage' | 'backup') => { setBackupFiles(null); lockPopHeight(menuRef.current); setMenuDetail(d); };
+    const openMenuDetail = (d: 'records' | 'manage' | 'backup' | 'names') => { setBackupFiles(null); lockPopHeight(menuRef.current); setMenuDetail(d); };
     const openPanelDetail = (d: 'file' | 'text') => { setShowUpload(false); setPanelDetail(d); };
     const closeMenuDetail = () => { collapsePop(menuRef.current); window.setTimeout(() => setMenuDetail(null), 110); };
     const closePanelDetail = () => { if (!uploading) setPanelDetail(null); };
@@ -2580,6 +2580,7 @@ const StudyApp: React.FC = () => {
                                     { key: 'records' as const, label: '阅读统计', icon: <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><circle cx="8.5" cy="8.5" r="6.5" stroke="currentColor" strokeWidth="1.4"/><path d="M8.5 5v3.5l2.4 1.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg> },
                                     { key: 'manage' as const, label: '管理书籍', icon: <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><rect x="2.5" y="3" width="12" height="3" rx="1" stroke="currentColor" strokeWidth="1.4"/><rect x="2.5" y="7.5" width="12" height="3" rx="1" stroke="currentColor" strokeWidth="1.4"/><rect x="2.5" y="12" width="12" height="3" rx="1" stroke="currentColor" strokeWidth="1.4"/></svg> },
                                     { key: 'backup' as const, label: '备份与恢复', icon: <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><path d="M4.5 12.5a3 3 0 01-.6-5.94A4.2 4.2 0 0112.3 7a2.8 2.8 0 01-.3 5.5H4.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M8.5 8.5v4M8.5 8.5L6.8 10.2M8.5 8.5l1.7 1.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+                                    { key: 'names' as const, label: '名字设置', icon: <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><circle cx="8.5" cy="5.8" r="2.6" stroke="currentColor" strokeWidth="1.4"/><path d="M3.2 14.2c.7-2.6 2.8-4 5.3-4s4.6 1.4 5.3 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg> },
                                 ]).map((item, i) => (
                                     <div key={item.key} className={menuPhase === 'anim' ? 'cr-item-in' : ''}
                                         onClick={() => { if (item.key === 'records') { setShowMenu(false); openStatsDrawer('global'); } else openMenuDetail(item.key); }}
@@ -2611,6 +2612,25 @@ const StudyApp: React.FC = () => {
                                         <div onClick={toggleDoor} style={{ padding: '7px 11px', cursor: 'pointer' }}>
                                             <div style={{ fontSize: 13, color: doorLocked ? '#16a34a' : '#ea580c' }}>{doorLocked ? '开门（解除锁定）' : '关门上锁'}</div>
                                             <div style={{ fontSize: 11, color: INK2, marginTop: 1 }}>{doorLocked ? '当前已关门：哥哥读不了书' : '锁上后哥哥无法开门读书，只有你能开'}</div>
+                                        </div>
+                                    </>
+                                )}
+                                {menuDetail === 'names' && (
+                                    <>
+                                        <div onClick={closeMenuDetail} style={vdHead}>
+                                            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ opacity: 0.85 }}><path d="M9.5 3L5 7.5L9.5 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                            <span style={{ fontSize: 14, fontWeight: 600, flex: 1, letterSpacing: '-0.01em' }}>名字设置</span>
+                                        </div>
+                                        <div style={{ height: '0.5px', background: 'hsla(245,20%,40%,0.12)', margin: '4px 11px' }} />
+                                        <div style={{ padding: '8px 11px' }}>
+                                            <div style={{ fontSize: 11, color: INK2, marginBottom: 4 }}>我的名字（批注落款）</div>
+                                            <input value={humanName} onChange={e => { setHumanName(e.target.value); localStorage.setItem('coread-human-name', e.target.value); }}
+                                                placeholder="我的名字"
+                                                style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 12, border: '1px solid rgba(60,55,45,0.12)', background: 'rgba(255,255,255,0.5)', fontSize: 13, color: INK, outline: 'none' }} />
+                                            <div style={{ fontSize: 11, color: INK2, margin: '8px 0 4px' }}>AI 的名字</div>
+                                            <input value={aiName} onChange={e => { setAiName(e.target.value); localStorage.setItem('coread-ai-name', e.target.value); }}
+                                                placeholder="AI 的名字"
+                                                style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 12, border: '1px solid rgba(60,55,45,0.12)', background: 'rgba(255,255,255,0.5)', fontSize: 13, color: INK, outline: 'none' }} />
                                         </div>
                                     </>
                                 )}
