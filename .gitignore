@@ -6,3 +6,4 @@ public/assets/*.map
 shen.db
 *.db-shm
 *.db-wal
+coread.db
