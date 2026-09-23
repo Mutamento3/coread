@@ -1772,14 +1772,19 @@ const StudyApp: React.FC = () => {
             {/* New replies notification bubble */}
             {mode === 'reading' && newReplies.length > 0 && !showReplies && (
                 <div onClick={(e) => { e.stopPropagation(); setShowReplies(true); }} style={{
-                    position: 'absolute', bottom: showBar ? 72 : 22, right: 16, zIndex: 30,
-                    background: c.shenColor, borderRadius: 20, padding: '8px 14px',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.15)', cursor: 'pointer',
+                    position: 'absolute', bottom: showBar ? 72 : 26, right: 12, zIndex: 30,
+                    background: readerNightMode ? 'rgba(38,38,38,0.65)' : 'linear-gradient(rgba(255,255,255,0.15), rgba(255,255,255,0) 40%), rgba(252,252,252,0.55)',
+                    backdropFilter: 'blur(22px) saturate(1.8)', WebkitBackdropFilter: 'blur(22px) saturate(1.8)',
+                    border: `1px solid ${readerNightMode ? 'rgba(255,255,255,0.07)' : 'rgba(60,55,45,0.08)'}`,
+                    borderRadius: 999, padding: '8px 14px',
+                    boxShadow: readerNightMode ? '0 4px 16px rgba(0,0,0,0.4)' : '0 4px 16px rgba(40,35,25,0.15)', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', gap: 6,
                     animation: 'pulse 2s ease-in-out infinite',
                     transition: 'bottom 0.3s ease',
                 }}>
-                    <span style={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>CC · {newReplies.length} 条新互动</span>
+                    <span style={{ color: readerNightMode ? '#ddd' : 'hsl(40, 8%, 16%)', fontSize: 12, fontWeight: 600 }}>
+                        {(() => { const names = [...new Set(newReplies.map(r => r.from_who).filter(Boolean).map(displayName))]; const who = names.length === 0 ? '新' : names.length === 1 ? names[0] : `${names[0]} 等`; return `${who} · ${newReplies.length} 条新批注`; })()}
+                    </span>
                 </div>
             )}
 
