@@ -1,7 +1,7 @@
-const BASE = window.location.origin + '/coread';  // 经桥 /coread/ 前缀反代时 API 也走同一前缀
+const BASE = window.location.origin;
 
 // 共读室关门锁 owner key（task-1786030476040-meb33p）：与 app 端同 key，锁定期彤宝的 web 端照常放行
-export const ROOM_OWNER_KEY = 'xk-room-owner-f47ac10b58d2e619a3c4';
+const ROOM_OWNER_KEY = 'xk-room-owner-f47ac10b58d2e619a3c4';
 
 async function request(path: string, opts?: RequestInit) {
   const res = await fetch(`${BASE}${path}`, {
@@ -68,12 +68,6 @@ export const api = {
     request(`/v1/books/${bookId}`, { method: 'DELETE' }),
   fetchBookToc: (bookId: number) =>
     request(`/v1/books/${bookId}/toc`),
-  // 全量批注（SullyOS 共读室回填）：不重拉分页，只拿注解列表
-  fetchBookComments: (bookId: number) =>
-    request(`/v1/books/${bookId}/comments`),
-  fetchRoomDoor: () => request('/v1/reading-room/door'),
-  setRoomDoor: (locked: boolean, note = '') =>
-    request('/v1/reading-room/door', { method: 'POST', body: JSON.stringify({ locked, note }) }),
   exportBook: async (bookId: number, format = 'epub') => {
     const res = await fetch(`${BASE}/v1/books/${bookId}/export?format=${format}`, { headers: { 'x-owner-key': ROOM_OWNER_KEY } });
     if (!res.ok) throw new Error('Export failed');

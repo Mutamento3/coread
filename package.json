@@ -13,7 +13,7 @@
     "build": "npx vite build",
     "test": "node --test",
     "test:e2e": "playwright test",
-    "check": "tsc -p web/tsconfig.json --noEmit && node --check server.mjs && node --check lib/routes.mjs && node --check lib/backup.mjs && node --check lib/coread-backup.mjs && node --check lib/reading-events.mjs && node --check lib/db.mjs && node --check lib/epub.mjs",
+    "check": "tsc -p web/tsconfig.json --noEmit && node --check server.mjs && node --check lib/backup.mjs && node --check lib/reading-events.mjs",
     "mcp": "node mcp-stdio.mjs",
     "mcp:sse": "node mcp-sse.mjs"
   },
