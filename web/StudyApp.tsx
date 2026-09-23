@@ -1360,7 +1360,7 @@ const StudyApp: React.FC = () => {
                         const allReplies: Comment[] = [];
                         const findReplies = (ids: number[]) => { const found = comments.filter(r => r.reply_to && ids.includes(r.reply_to)); if (found.length) { allReplies.push(...found); findReplies(found.map(f => f.id)); } };
                         findReplies(overlapping.map(o => o.id));
-                        const withReplies = [...overlapping, ...allReplies];
+                        const withReplies = [...new Map([...overlapping, ...allReplies].map(x => [x.id, x])).values()];
                         setActiveComments(prev => prev.length > 0 && prev[0]?.id === overlapping[0]?.id ? [] : withReplies);
                     }}
                     style={{
@@ -1605,7 +1605,7 @@ const StudyApp: React.FC = () => {
                                         return { ...h, sel_start_idx: s - frag.startOffset, sel_end_idx: e - frag.startOffset };
                                     }).filter(h => h.sel_end_idx! > 0 && h.sel_start_idx! < frag.content.length);
 
-                                    const blockComments = commentsForPara(frag.idx).filter(x => (x.sel_start_idx == null || x.sel_end_idx == null) && x.paragraph_idx === frag.idx && !frag.isPartialStart);
+                                    const blockComments = commentsForPara(frag.idx).filter(x => (x.sel_start_idx == null || x.sel_end_idx == null) && x.paragraph_idx === frag.idx && !frag.isPartialStart && !x.reply_to);
 
                                     const imgMatch = frag.content.match(/^\[IMG:([^\]]+)\]$/);
                                     if (imgMatch && activeBook) {
@@ -1617,7 +1617,7 @@ const StudyApp: React.FC = () => {
                                         );
                                     }
                                     return (
-                                        <div key={`${frag.idx}-${frag.startOffset}-${frag.endOffset}`} style={{ marginBottom: chapterTitle ? CHAPTER_GAP_BOTTOM : PARA_GAP, marginTop: chapterTitle && visibleIndex > 0 ? CHAPTER_GAP_TOP : 0 }}>
+                                        <div key={`${frag.idx}-${frag.startOffset}-${frag.endOffset}`} style={{ position: 'relative', marginBottom: chapterTitle ? CHAPTER_GAP_BOTTOM : PARA_GAP, marginTop: chapterTitle && visibleIndex > 0 ? CHAPTER_GAP_TOP : 0 }}>
                                             <div data-para-idx={frag.idx} data-frag-start={frag.startOffset} data-frag-end={frag.endOffset} style={{
                                                 fontSize: chapterTitle ? readerFontSize + 4 : original.content.trim().startsWith('# ') ? readerFontSize + 3 : original.content.trim().startsWith('## ') ? readerFontSize + 2 : readerFontSize,
                                                 lineHeight: chapterTitle ? 2.2 : 1.85, color: readerNightMode ? (heading ? '#ddd' : '#ccc') : (heading ? '#222' : '#333'),
@@ -1630,8 +1630,8 @@ const StudyApp: React.FC = () => {
                                             </div>
 
                                             {blockComments.length > 0 && (
-                                                <div style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                                    {blockComments.filter(x => !x.reply_to).map(cmt => {
+                                                <div style={{ position: 'absolute', left: -16, top: (readerFontSize * 1.85 - 8) / 2, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                    {blockComments.map(cmt => {
                                                         const isShen = cmt.from_who.toLowerCase() === 'ai' || cmt.from_who.toLowerCase() === aiName.toLowerCase();
                                                         const color = isShen ? c.shenColor : c.tongColor;
                                                         return (
