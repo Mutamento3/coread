@@ -22,6 +22,7 @@ export class ReadingClock {
     this.bookId = bookId;
     this.persist = persist;
     this.days = new Map();
+    this.dayStart = new Map();
     this.last = null;
     this.total = 0;
   }
@@ -32,9 +33,13 @@ export class ReadingClock {
     this.last = now;
     // A suspended JS runtime cannot prove foreground time; never infer a sleep gap.
     if (now <= start || now - start > 5000) return;
+    let cursor = start;
     for (const part of splitDays(start, now)) {
+      // Clock-chart start = when timing actually began on this day, not when the book was opened.
+      if (!this.dayStart.has(part.date)) { const t = new Date(cursor); this.dayStart.set(part.date, t.getHours() * 60 + t.getMinutes()); }
+      cursor += part.ms;
       const elapsed = (this.days.get(part.date) || 0) + part.ms;
-      this.persist({ session_id: this.session, book_id: this.bookId, reading_date: part.date, elapsed_ms: elapsed });
+      this.persist({ session_id: this.session, book_id: this.bookId, reading_date: part.date, elapsed_ms: elapsed, start_min: this.dayStart.get(part.date) });
       this.days.set(part.date, elapsed);
       this.total += part.ms;
     }

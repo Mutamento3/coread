@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef, startTransition, useLayoutEffect, useMemo } from 'react';
-import { api, BASE } from './api';
+import { api, BASE, ROOM_OWNER_KEY } from './api';
 import { useReadingClock, flushReading } from './useReadingClock';
 import ReadingJournal, { duration } from './ReadingJournal';
 // BackupControls removed — inline backup controls from home version
@@ -590,7 +590,7 @@ const StudyApp: React.FC = () => {
         return () => clearInterval(interval);
     }, [mode, activeBook?.id, page]);
 
-    // Poll for new replies from 沉
+    // Poll for new replies from the AI
     useEffect(() => {
         if (mode !== 'reading' || !activeBook) return;
         const check = async () => {
@@ -835,7 +835,7 @@ const StudyApp: React.FC = () => {
     const loadReadingStats = (reader: 'tongbao' | 'ai') => {
         setStatsReader(reader);
         setReadingStatsLoading(true);
-        fetch(`${BASE}/v1/reading-stats?today=${localDay(Date.now())}&reader=${reader}`, { headers: { 'x-owner-key': 'xk-room-owner-f47ac10b58d2e619a3c4' } })
+        fetch(`${BASE}/v1/reading-stats?today=${localDay(Date.now())}&reader=${reader}`, { headers: { 'x-owner-key': ROOM_OWNER_KEY } })
             .then(r => r.json()).then(d => { setReadingStats(d); setReadingStatsLoading(false); })
             .catch(() => setReadingStatsLoading(false));
     };

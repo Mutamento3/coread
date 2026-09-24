@@ -1,7 +1,7 @@
 export const BASE = window.location.origin + (window.location.pathname.match(/^\/coread/) ? '/coread' : '');
 
-// 共读室关门锁 owner key（task-1786030476040-meb33p）：与 app 端同 key，锁定期彤宝的 web 端照常放行
-const ROOM_OWNER_KEY = 'xk-room-owner-f47ac10b58d2e619a3c4';
+// Owner key for the locked reading room; set once in this browser via localStorage 'coread-owner-key'.
+export const ROOM_OWNER_KEY = (() => { try { return localStorage.getItem('coread-owner-key') || ''; } catch { return ''; } })();
 
 async function request(path: string, opts?: RequestInit) {
   const res = await fetch(`${BASE}${path}`, {
