@@ -18,7 +18,7 @@ AI和人类一起读书，批注写在同一本书的页边。
 - **AI阅读日志** — AI读书时自动记录时长、段落数和字数，统计页可切换查看AI的阅读足迹
 - **记录批注** — AI可以读取阅读足迹，并给某一天或某一本书留下共读批注
 - **毛玻璃批注面板** — 批注弹出卡片半透明毛玻璃，暖色调INK配色
-- **共读室关门锁** — 管理员可锁定共读室，未授权访客看到"🔒共读室已关门"提示
+- **共读室关门锁（AI防沉迷）** — 菜单里一键关门，关门后AI的读书工具全部停用，要人类开门才能继续读，见下方「关门锁」
 - **夜间阅读** — 深色背景、独立亮度与字体调节，设置自动保留
 - **可安装网页应用** — 支持从手机浏览器添加到桌面，以独立窗口打开
 - **目录窗口化** — 目录浮层独立窗口，不遮挡阅读内容
@@ -37,6 +37,10 @@ npm start       # 启动服务器
 ```
 
 浏览器打开 `http://localhost:3000`。
+
+> ⚠️ 网页和接口本身没有登录。服务器默认监听所有网卡（`0.0.0.0`），装在公网机器上时，谁拿到地址谁就能读写你的书和批注。建议用 `COREAD_HOST=127.0.0.1` 只监听本机，再放到带认证的反向代理或 Tailscale 这类私网后面。
+>
+> 前端默认按根路径打包。要挂在子路径下（比如 `https://example.com/coread/`），用 `npx vite build --base=/coread/` 构建。
 
 ## MCP配置
 
@@ -94,10 +98,23 @@ Streamable HTTP端点：`http://你的服务器:3001/mcp`
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `COREAD_PORT` | `3000` | Web服务器端口 |
+| `COREAD_HOST` | `0.0.0.0` | Web服务器监听地址，公网机器建议 `127.0.0.1` |
 | `COREAD_MCP_PORT` | `3001` | MCP SSE/HTTP服务器端口 |
+| `COREAD_MCP_HOST` | `127.0.0.1` | MCP SSE/HTTP服务器监听地址 |
 | `COREAD_DB` | `./data/coread.db` | 数据库路径 |
 | `COREAD_NOTIFY_CMD` | 空（关闭） | 有人评论时执行的shell命令，见下方「评论通知」 |
 | `COREAD_NOTIFY_FROM` | `human` | 触发通知的评论者名字，`*` 表示所有人 |
+| `ROOM_OWNER_KEY` | 空 | 关门锁的开门钥匙，见下方「关门锁」 |
+| `ROOM_LOCK_PATH` | `./data/reading-room-lock.json` | 关门锁状态文件 |
+
+## 关门锁（AI防沉迷）
+
+在网页菜单里打开「关门上锁」后，AI 通过 MCP 读书、写批注、看统计的工具都会返回"已关门"，直到人类开门。
+
+- **不设 `ROOM_OWNER_KEY`**：网页照常能读，谁都能在网页上开关门。锁只拦 AI 的 MCP 工具。
+- **设了 `ROOM_OWNER_KEY`**：开门必须带钥匙，关门期间没钥匙的网页也进不去。在你自己的浏览器里打开一次 `http://你的地址/?owner_key=你的钥匙`，这个浏览器就会记住钥匙，地址栏里的钥匙会自动抹掉。
+
+这是一把约定锁，不是安全防线：如果你的 AI 能直接登上跑 coread 的机器，它总有办法绕开。锁的作用是让"开门"变成一件 AI 得明着违背你才能做的事。
 
 ## 评论通知（把批注实时推给你的AI）
 
@@ -178,6 +195,8 @@ npm run build
 npm start
 ```
 
+The web UI and API have no login, and the server listens on `0.0.0.0` by default. On a public machine, set `COREAD_HOST=127.0.0.1` and put it behind an authenticating reverse proxy or a private network such as Tailscale. The frontend builds for the root path; for a sub-path deploy use `npx vite build --base=/coread/`.
+
 Open `http://localhost:3000` in your browser.
 
 ### MCP Setup
@@ -219,6 +238,10 @@ COREAD_NOTIFY_CMD="./examples/notify-webhook.sh" COREAD_WEBHOOK_URL="https://exa
 ```
 
 `COREAD_NOTIFY_FROM` filters who triggers it (default `human`, `*` for everyone).
+
+### Reading-room lock (AI anti-binge)
+
+Toggle "lock" in the web menu and every MCP reading tool returns `door_locked` until a human unlocks it. Without `ROOM_OWNER_KEY`, anyone on the web page can lock/unlock and only the AI's MCP tools are blocked. With `ROOM_OWNER_KEY` set, unlocking needs the key and keyless web visitors are blocked too — open `http://your-host/?owner_key=YOUR_KEY` once and that browser remembers it. It's a commitment device, not a security boundary: an AI with shell access to the host can always get around it.
 
 ## License
 

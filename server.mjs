@@ -52,7 +52,11 @@ const server = http.createServer(async (req, res) => {
   if (handled) return;
 
   // Serve static files from public/
-  let filePath = path.join(__dirname, 'public', req.url === '/' ? 'index.html' : req.url.split('?')[0]);
+  const publicDir = path.join(__dirname, 'public');
+  let urlPath;
+  try { urlPath = decodeURIComponent(req.url.split('?')[0]); } catch { res.writeHead(400); res.end('Bad request'); return; }
+  let filePath = path.join(publicDir, urlPath === '/' ? 'index.html' : urlPath);
+  if (!filePath.startsWith(publicDir + path.sep)) { res.writeHead(404); res.end('Not found'); return; }
   if (!fs.existsSync(filePath) && !path.extname(filePath)) {
     filePath = path.join(__dirname, 'public', 'index.html');
   }

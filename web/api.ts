@@ -1,7 +1,18 @@
 export const BASE = window.location.origin + (window.location.pathname.match(/^\/coread/) ? '/coread' : '');
 
-// Owner key for the locked reading room; set once in this browser via localStorage 'coread-owner-key'.
-export const ROOM_OWNER_KEY = (() => { try { return localStorage.getItem('coread-owner-key') || ''; } catch { return ''; } })();
+// Owner key for the locked reading room: open the page once with ?owner_key=... and this browser remembers it.
+export const ROOM_OWNER_KEY = (() => {
+  try {
+    const url = new URL(window.location.href);
+    const fromUrl = url.searchParams.get('owner_key');
+    if (fromUrl !== null) {
+      localStorage.setItem('coread-owner-key', fromUrl);
+      url.searchParams.delete('owner_key');
+      history.replaceState(null, '', url.toString());
+    }
+    return localStorage.getItem('coread-owner-key') || '';
+  } catch { return ''; }
+})();
 
 async function request(path: string, opts?: RequestInit) {
   const res = await fetch(`${BASE}${path}`, {
