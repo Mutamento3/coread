@@ -865,18 +865,6 @@ const StudyApp: React.FC = () => {
         currentParaOffsetRef.current = 0;
         savedParaOffsetRef.current = 0;
         provisionalRangeRef.current = null;
-        {
-            const bookTitle = book.title?.replace(/\s*\(.*?\)\s*/g, '').trim();
-            fetch(`${BASE}/v1/reading-wishlist`).then(r => r.json()).then(res => {
-                const match = (res.items || []).find((w: any) => w.status === 'want' && w.title?.trim() === bookTitle);
-                if (match) {
-                    fetch(`${BASE}/v1/reading-wishlist`, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: match.id, title: match.title, author: match.author, reason: match.reason, status: 'reading' }),
-                    }).catch(() => {});
-                }
-            }).catch(() => {});
-        }
         try {
             const totalParas = Math.max(1, book.total_paragraphs || 0);
             const paraCacheKey = `paras-v1-${book.id}`;
@@ -1410,16 +1398,6 @@ const StudyApp: React.FC = () => {
             if (next === totalPages && totalPages > 1 && autoFinishRef.current !== activeBook.id) {
                 autoFinishRef.current = activeBook.id;
                 api.markBookFinished(activeBook.id, localDateString()).catch(() => {});
-                const bookTitle = activeBook.title?.replace(/\s*\(.*?\)\s*/g, '').trim();
-                fetch(`${BASE}/v1/reading-wishlist`).then(r => r.json()).then(res => {
-                    const match = (res.items || []).find((w: any) => w.status === 'reading' && w.title?.trim() === bookTitle);
-                    if (match) {
-                        fetch(`${BASE}/v1/reading-wishlist`, {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id: match.id, title: match.title, author: match.author, reason: match.reason, status: 'done' }),
-                        }).catch(() => {});
-                    }
-                }).catch(() => {});
             }
         }
     };

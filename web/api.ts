@@ -86,7 +86,6 @@ export const api = {
   },
   imageUrl: (bookId: number, filename: string) =>
     `${BASE}/v1/book-images/${bookId}/${filename}`,
-  wishlistUrl: () => `${BASE}/v1/reading-wishlist`,
   fetchRoomDoor: () => request('/v1/reading-room/door'),
   setRoomDoor: (locked: boolean) =>
     request('/v1/reading-room/door', { method: 'POST', body: JSON.stringify({ locked }) }),
