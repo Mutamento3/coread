@@ -19,6 +19,7 @@ AI和人类一起读书，批注写在同一本书的页边。
 - **记录批注** — AI可以读取阅读足迹，并给某一天或某一本书留下共读批注
 - **毛玻璃批注面板** — 批注弹出卡片半透明毛玻璃，暖色调INK配色
 - **共读室关门锁（AI防沉迷）** — 菜单里一键关门，关门后AI的读书工具全部停用，要人类开门才能继续读，见下方「关门锁」
+- **书库备份** — 菜单里一键导出、看备份列表、从备份恢复，恢复前先显示有几本书几条批注，确认后才覆盖，见下方「备份」
 - **夜间阅读** — 深色背景、独立亮度与字体调节，设置自动保留
 - **可安装网页应用** — 支持从手机浏览器添加到桌面，以独立窗口打开
 - **目录窗口化** — 目录浮层独立窗口，不遮挡阅读内容
@@ -116,6 +117,14 @@ Streamable HTTP端点：`http://你的服务器:3001/mcp`
 
 这是一把约定锁，不是安全防线：如果你的 AI 能直接登上跑 coread 的机器，它总有办法绕开。锁的作用是让"开门"变成一件 AI 得明着违背你才能做的事。
 
+## 备份
+
+菜单里的备份面板把书、批注、阅读记录和阅读设置打包成一个 JSON 文件，存在数据库旁边的 `backups/` 目录里（默认 `./data/backups/`）。恢复分两步：先预览备份里有几本书、几条批注，确认后才覆盖现有书库。
+
+- 设了 `ROOM_OWNER_KEY` 时，导出、列表、删除、恢复都要带钥匙。
+- 备份接口只接受同源请求，别的网站在你浏览器里发不了。
+- 备份文件留在服务器上，想防硬盘坏掉，自己再把 `backups/` 同步到别处。
+
 ## 评论通知（把批注实时推给你的AI）
 
 人类在共读室划句子写批注时，AI那边默认是不知道的（MCP是拉模式，AI要主动翻书才看得到）。设置 `COREAD_NOTIFY_CMD` 后，每条新评论都会触发你配置的命令，评论内容通过环境变量传入：
@@ -152,7 +161,11 @@ node server.mjs
 ```bash
 npm run dev     # Vite开发服务器（API代理到localhost:3000）
 npm start       # 生产模式（提供构建好的前端）
+npm test        # 自带测试
+npm run check   # 前端类型检查 + 后端语法检查
 ```
+
+更新到新版本：`git pull && npm install && npm run build`，再重启服务。
 
 ## 项目结构
 
@@ -165,6 +178,9 @@ lib/
   epub.mjs         — Epub解析器（章节、图片、封面）
   routes.mjs       — 书籍API路由 + 统一坐标制分页算法
   mcp-tools.mjs    — MCP工具定义与处理
+  reading-stats.mjs / reading-events.mjs — 阅读记录与统计
+  backup.mjs / backup-routes.mjs — 备份导出与恢复
+test/              — 自带测试（npm test）
 web/
   StudyApp.tsx     — React前端（块测量分页阅读器 + 批注 + IndexedDB缓存）
   api.ts           — API客户端
@@ -224,6 +240,12 @@ npm run mcp:sse   # Starts SSE/HTTP MCP server on port 3001
 - Streamable HTTP endpoint: `http://your-server:3001/mcp`
 
 Works with any MCP-compatible client — not limited to Claude. Three transport modes: stdio, SSE, Streamable HTTP.
+
+### Backups
+
+The menu's backup panel packs books, comments, reading stats and reader settings into one JSON file under `backups/` next to the database (default `./data/backups/`). Restoring shows a preview of book and comment counts first and only overwrites after you confirm. With `ROOM_OWNER_KEY` set, every backup action needs the key; backup endpoints accept same-origin requests only. Copy `backups/` somewhere else yourself if you want protection against disk loss.
+
+To update: `git pull && npm install && npm run build`, then restart. Run `npm test` and `npm run check` to verify.
 
 ### Comment Notifications (push human comments to your AI)
 
