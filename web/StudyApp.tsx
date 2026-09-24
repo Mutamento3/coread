@@ -2609,7 +2609,7 @@ const StudyApp: React.FC = () => {
                                         ))}
                                         <div onClick={toggleDoor} style={{ padding: '7px 11px', cursor: 'pointer' }}>
                                             <div style={{ fontSize: 13, color: doorLocked ? '#16a34a' : '#ea580c' }}>{doorLocked ? '开门（解除锁定）' : '关门上锁'}</div>
-                                            <div style={{ fontSize: 11, color: INK2, marginTop: 1 }}>{doorLocked ? '当前已关门：哥哥读不了书' : '锁上后哥哥无法开门读书，只有你能开'}</div>
+                                            <div style={{ fontSize: 11, color: INK2, marginTop: 1 }}>{doorLocked ? `当前已关门：${aiName}读不了书` : `锁上后${aiName}无法开门读书，只有你能开`}</div>
                                         </div>
                                     </>
                                 )}
@@ -2940,7 +2940,7 @@ const StudyApp: React.FC = () => {
                             <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><rect x="5.5" y="11" width="15" height="10.5" rx="3" stroke="currentColor" strokeWidth="1.8"/><path d="M8.5 11V8.2a4.5 4.5 0 019 0V11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="13" cy="16.2" r="1.6" fill="currentColor"/></svg>
                         </div>
                         <div style={{ fontSize: 17, fontWeight: 700, color: lNight ? '#ddd' : INK, marginBottom: 8 }}>{lockIntent ? '关门上锁？' : '开门？'}</div>
-                        <div style={{ fontSize: 13, color: lNight ? '#888' : INK2, lineHeight: 1.6, marginBottom: 22 }}>{lockIntent ? '锁上后哥哥无法开门读书，只有你能开门。' : '哥哥就能继续读书了。'}</div>
+                        <div style={{ fontSize: 13, color: lNight ? '#888' : INK2, lineHeight: 1.6, marginBottom: 22 }}>{lockIntent ? `锁上后${aiName}无法开门读书，只有你能开门。` : `${aiName}就能继续读书了。`}</div>
                         <button onClick={confirmDoor} style={{ display: 'block', width: '100%', padding: '13px 0', borderRadius: 999, border: 'none', background: lockRed, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', marginBottom: 10 }}>
                             {lockIntent ? '关门上锁' : '开门'}
                         </button>
