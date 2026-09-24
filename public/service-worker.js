@@ -1,4 +1,4 @@
-const CACHE_NAME = 'coread-shell-v1';
+const CACHE_NAME = 'coread-shell-v2';
 const SHELL_FILES = ['/', '/manifest.webmanifest', '/coread-icon.svg'];
 
 self.addEventListener('install', event => {

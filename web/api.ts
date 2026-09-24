@@ -1,4 +1,4 @@
-const BASE = window.location.origin;
+export const BASE = window.location.origin + (window.location.pathname.match(/^\/coread/) ? '/coread' : '');
 
 // 共读室关门锁 owner key（task-1786030476040-meb33p）：与 app 端同 key，锁定期彤宝的 web 端照常放行
 const ROOM_OWNER_KEY = 'xk-room-owner-f47ac10b58d2e619a3c4';
@@ -76,4 +76,37 @@ export const api = {
   imageUrl: (bookId: number, filename: string) =>
     `${BASE}/v1/book-images/${bookId}/${filename}`,
   wishlistUrl: () => `${BASE}/v1/reading-wishlist`,
+  fetchRoomDoor: () => request('/v1/reading-room/door'),
+  setRoomDoor: (locked: boolean) =>
+    request('/v1/reading-room/door', { method: 'POST', body: JSON.stringify({ locked }) }),
+  backupList: async () => {
+    const res = await fetch(`${BASE}/v1/coread-backup/list`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-owner-key': ROOM_OWNER_KEY }, body: '{}' });
+    return res.json();
+  },
+  backupDelete: async (file: string) => {
+    await fetch(`${BASE}/v1/coread-backup/delete`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-owner-key': ROOM_OWNER_KEY }, body: JSON.stringify({ file }) });
+  },
+  backupExport: async (settings: Record<string, string>) => {
+    const res = await fetch(`${BASE}/v1/coread-backup/export`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-owner-key': ROOM_OWNER_KEY }, body: JSON.stringify({ settings }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || d.message || `导出失败 ${res.status}`);
+    return d;
+  },
+  backupPreview: async (payload: any) => {
+    const res = await fetch(`${BASE}/v1/coread-backup/preview`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-owner-key': ROOM_OWNER_KEY }, body: JSON.stringify(payload) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || `预检失败 ${res.status}`);
+    return d;
+  },
+  backupRestore: async (token: string) => {
+    const res = await fetch(`${BASE}/v1/coread-backup/restore`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-owner-key': ROOM_OWNER_KEY }, body: JSON.stringify({ token, confirmed: true }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || `恢复失败 ${res.status}`);
+    return d;
+  },
 };
