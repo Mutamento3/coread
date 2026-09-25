@@ -1833,7 +1833,7 @@ const StudyApp: React.FC = () => {
                                 <div style={{ fontSize: 12, color: '#ccc' }}>点右上角 + 上传一本书</div>
                             </div>
                         ) : (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 100px)', gap: 12 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 100px)', justifyContent: 'space-between', columnGap: 8, rowGap: 12 }}>
                                 {[...books].sort((a, b) => {
                                     const act = (x: any) => Math.max(
                                         x.last_opened_at ? new Date(x.last_opened_at).getTime() : 0,
