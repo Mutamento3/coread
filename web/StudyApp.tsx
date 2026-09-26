@@ -351,6 +351,7 @@ const StudyApp: React.FC = () => {
     const [tocViewH, setTocViewH] = useState(0);
     const commentsRef = useRef<Comment[]>([]);
     const allCommentsRef = useRef<Comment[]>([]);
+    const commentSubmittingRef = useRef(false);
     const suppressPageJumpRef = useRef(false);
     const replyPageRef = useRef<number | null>(null);
 
@@ -1447,7 +1448,8 @@ const StudyApp: React.FC = () => {
     };
 
     const handleAddComment = async () => {
-        if (!activeBook || commentingIdx === null || !commentText.trim()) return;
+        if (!activeBook || commentingIdx === null || !commentText.trim() || commentSubmittingRef.current) return;
+        commentSubmittingRef.current = true;
         try {
             const result = await api.addBookComment(activeBook.id, {
                 paragraph_idx: commentingIdx, content: commentText.trim(), from_who: humanName,
@@ -1474,6 +1476,7 @@ const StudyApp: React.FC = () => {
             setPage(pageToRestore);
             setTimeout(() => { suppressPageJumpRef.current = false; }, 500);
         } catch (e: any) { toast(`批注失败: ${e.message}`); }
+        finally { commentSubmittingRef.current = false; }
     };
 
     const handleDeleteComment = async (cmt: Comment) => {
